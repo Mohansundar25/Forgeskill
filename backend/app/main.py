@@ -1,60 +1,52 @@
-import os
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
-from dotenv import load_dotenv
+from app.services.llm_client import extract_skills
+from app.services.matcher import match_skills
+from app.services.pdf_parser import extract_text
 
-load_dotenv()
-
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile  # noqa: E402
-from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
-
-from app.services.matcher import analyze, extract_skills  # noqa: E402
-from app.services.pdf_parser import extract_text_from_pdf  # noqa: E402
-
-MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
-
-app = FastAPI(title="Forgeskill API", version="1.0.0")
-
+app = FastAPI(title='Forgeskill API', version='1.0.0')
 app.add_middleware(
-    CORSMiddleware,
-    allow_origins=os.getenv("CORS_ORIGINS", "*").split(","),
-    allow_methods=["*"],
-    allow_headers=["*"],
+    CORSMiddleware, allow_origins=['*'], allow_methods=['*'], allow_headers=['*']
 )
 
 
-async def _read_resume(file: UploadFile) -> str:
-    if not (file.filename or "").lower().endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Please upload a PDF file.")
-    data = await file.read()
-    if len(data) > MAX_FILE_SIZE:
-        raise HTTPException(status_code=413, detail="File is larger than 5 MB.")
-    try:
-        return extract_text_from_pdf(data)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
+class MatchRequest(BaseModel):
+    resume_skills: list[str]
+    job_description: str
 
 
-@app.get("/api/health")
+async def _read_pdf(file: UploadFile) -> str:
+    if not (file.filename or '').lower().endswith('.pdf'):
+        raise HTTPException(status_code=400, detail='Only PDF files are supported')
+    text = extract_text(await file.read())
+    if not text.strip():
+        raise HTTPException(status_code=422, detail='Could not extract text from the PDF')
+    return text
+
+
+@app.get('/api/health')
 def health():
-    return {"status": "ok"}
+    return {'status': 'ok'}
 
 
-@app.post("/api/upload-resume")
+@app.post('/api/upload-resume')
 async def upload_resume(file: UploadFile = File(...)):
-    text = await _read_resume(file)
-    try:
-        skills = extract_skills(text, "resume")
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"LLM error: {exc}")
-    return {"filename": file.filename, "characters": len(text), "skills": skills}
+    text = await _read_pdf(file)
+    return {'skills': extract_skills(text)}
 
 
-@app.post("/api/match")
-async def match(file: UploadFile = File(...), job_description: str = Form(...)):
-    if len(job_description.strip()) < 20:
-        raise HTTPException(status_code=400, detail="Job description is too short.")
-    text = await _read_resume(file)
-    try:
-        return analyze(text, job_description)
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"LLM error: {exc}")
+@app.post('/api/match')
+def match(req: MatchRequest):
+    if not req.job_description.strip():
+        raise HTTPException(status_code=400, detail='Job description is required')
+    return match_skills(req.resume_skills, req.job_description)
+
+
+@app.post('/api/analyze')
+async def analyze(file: UploadFile = File(...), job_description: str = Form(...)):
+    """One-shot endpoint: PDF resume + job description -> AI skills, score and gap analysis."""
+    text = await _read_pdf(file)
+    resume_skills = extract_skills(text)
+    return {'resume_skills': resume_skills, **match_skills(resume_skills, job_description)}

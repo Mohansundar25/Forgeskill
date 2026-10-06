@@ -1,40 +1,56 @@
-# Forgeskill — LLM-Powered Resume–Job Matching System
+# Forgeskill — AI-Powered Resume–Job Matching System
 
-Forgeskill compares a candidate's resume with a job description and shows how well they match. It extracts text from a PDF resume, identifies skills using structured Groq API prompts, calculates a match score, and generates a skill-gap analysis with learning recommendations.
+Forgeskill uses **Large Language Models (LLMs)** to compare a candidate's resume with a job description. It extracts text from a PDF resume, uses AI to identify skills, calculates a match score, and generates a personalised **AI skill-gap analysis** with learning recommendations.
+
+## 🤖 How AI Is Used
+
+### In the product
+
+| AI feature | What it does |
+|---|---|
+| **LLM skill extraction** | Structured Groq API prompts pull technical skills out of unstructured resume and job-description text and normalise them to canonical names (e.g. `JS` → `JavaScript`) |
+| **AI gap analysis** | The LLM reviews matched vs. missing skills and writes a short fit assessment |
+| **AI learning recommendations** | For each important missing skill, the LLM explains why it matters and how to learn it |
+| **JSON-mode prompting** | Prompts force structured JSON output so AI responses are reliable to parse and display |
+
+### In development
+
+This project was built with **AI-assisted development**. AI coding agents were used to speed up implementation, debugging and refactoring, while I owned the architecture, prompt design, code review, API integration and cloud deployment.
 
 ## Features
 
-- **PDF resume parsing:** extracts text from uploaded resumes
-- **Skill extraction:** structured Groq API prompts identify technical and soft skills
-- **Job matching:** compares resume skills against a job description and returns a match score
-- **Skill-gap analysis:** lists missing skills with tips on how to learn them
-- **Serverless-ready backend:** FastAPI app wrapped with Mangum for AWS Lambda + API Gateway
-- **React frontend:** upload a resume, paste a job description, view results
+- Upload a PDF resume and paste any job description
+- AI extracts skills from both documents
+- Match score (%) with matched and missing skills
+- AI-written fit summary and learning plan for missing skills
+- FastAPI backend that runs locally or serverless on AWS Lambda (via Mangum)
+- React (Vite) frontend
 
 ## Tech Stack
 
 | Layer | Technology |
 |---|---|
-| Frontend | React (Vite) |
+| Frontend | React, Vite |
 | Backend | Python, FastAPI |
-| AI / LLM | Groq API (structured JSON prompts) |
-| Cloud | AWS Lambda, API Gateway (via Mangum) |
+| AI / LLM | Groq API (Llama 3.3 70B), structured JSON prompts |
 | PDF parsing | pypdf |
+| Cloud | AWS Lambda, API Gateway, Mangum |
 
 ## Architecture
 
 ```
 React Frontend
-      │  (upload resume + job description)
+      │  (PDF resume + job description)
       ▼
 AWS API Gateway
       │
       ▼
 AWS Lambda (FastAPI + Mangum)
       │
-      ├── PDF Text Extraction (pypdf)
-      ├── Skill Extraction (Groq API)
-      └── Match Score + Skill-Gap Analysis (Groq API)
+      ├── PDF text extraction (pypdf)
+      ├── 🤖 LLM skill extraction (Groq)
+      ├── Match score calculation
+      └── 🤖 LLM gap analysis + recommendations (Groq)
       │
       ▼
 JSON response → React UI
@@ -46,33 +62,29 @@ JSON response → React UI
 Forgeskill/
 ├── backend/
 │   ├── app/
-│   │   ├── main.py            # FastAPI app + routes
-│   │   ├── services/
-│   │   │   ├── pdf_parser.py  # Resume text extraction
-│   │   │   ├── llm_client.py  # Groq API client
-│   │   │   └── matcher.py     # Skill extraction, match score, gap analysis
-│   │   └── prompts/
-│   │       └── templates.py   # Structured prompt templates
-│   ├── handler.py             # AWS Lambda entry point (Mangum)
+│   │   ├── main.py              # FastAPI app + routes
+│   │   ├── prompts.py           # AI prompt templates
+│   │   └── services/
+│   │       ├── pdf_parser.py    # Resume text extraction
+│   │       ├── llm_client.py    # Groq LLM client + skill extraction
+│   │       └── matcher.py       # Match score + AI gap analysis
+│   ├── handler.py               # AWS Lambda handler (Mangum)
 │   ├── requirements.txt
 │   └── .env.example
 ├── frontend/
-│   ├── src/
-│   │   ├── App.jsx
-│   │   ├── App.css
-│   │   └── main.jsx
+│   ├── src/ (App.jsx, main.jsx, styles.css)
 │   ├── index.html
-│   ├── package.json
-│   └── vite.config.js
+│   └── package.json
 └── README.md
 ```
 
 ## Getting Started
 
 ### Prerequisites
+
 - Python 3.10+
 - Node.js 18+
-- A Groq API key (https://console.groq.com)
+- A free Groq API key from https://console.groq.com
 
 ### Backend
 
@@ -85,7 +97,7 @@ cp .env.example .env          # then add your GROQ_API_KEY
 uvicorn app.main:app --reload
 ```
 
-Interactive API docs: `http://localhost:8000/docs`
+Interactive API docs: http://localhost:8000/docs
 
 ### Frontend
 
@@ -95,41 +107,33 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:5173`. Set `VITE_API_URL` in `frontend/.env` if your API is not on `http://localhost:8000`.
+Open http://localhost:5173
 
 ## API Endpoints
 
 | Method | Endpoint | Description |
 |---|---|---|
+| POST | `/api/analyze` | Upload a PDF + job description → AI skills, match score, gap analysis |
+| POST | `/api/upload-resume` | Upload a PDF resume → AI-extracted skills |
+| POST | `/api/match` | Compare a skill list with a job description |
 | GET | `/api/health` | Health check |
-| POST | `/api/upload-resume` | Upload a PDF resume (`file`) and get extracted skills |
-| POST | `/api/match` | Upload a PDF resume (`file`) + `job_description` and get match score and skill gaps |
 
-Example:
+## Deploying to AWS Lambda
 
-```bash
-curl -X POST http://localhost:8000/api/match \
-  -F "file=@resume.pdf" \
-  -F "job_description=Looking for a Python developer with FastAPI, AWS and Docker experience"
-```
-
-## Deployment (AWS Lambda)
-
-1. Install dependencies into a package folder: `pip install -r requirements.txt -t package/`
-2. Copy `app/` and `handler.py` into `package/` and zip its contents.
-3. Create a Lambda function (Python 3.11) with handler `handler.handler` and upload the zip.
+1. Install dependencies into a folder: `pip install -r requirements.txt -t package/`
+2. Copy `app/` and `handler.py` into `package/` and zip it.
+3. Create a Lambda function (Python 3.11), upload the zip, set the handler to `handler.handler`.
 4. Add `GROQ_API_KEY` as a Lambda environment variable.
-5. Create an API Gateway HTTP API that proxies all routes to the Lambda.
-6. Set `VITE_API_URL` in the frontend to the API Gateway URL and deploy the frontend (S3, Netlify, or Vercel).
+5. Create an API Gateway HTTP API pointing to the function.
+6. Set `VITE_API_URL` in the frontend to the API Gateway URL.
 
 ## Future Improvements
 
-- Support DOCX resumes
-- Rank multiple job descriptions at once
-- Save match history per user
-- Suggest specific courses for missing skills
+- AI-generated tailored resume bullet points for a specific job
+- Rank multiple job descriptions against one resume
+- DOCX resume support
+- Embedding-based semantic skill matching
 
 ## Author
 
-**Mohana Sundaram B**  
-GitHub: [Mohansundar25](https://github.com/Mohansundar25)
+**Mohana Sundaram B** · GitHub: [Mohansundar25](https://github.com/Mohansundar25)

@@ -1,17 +1,9 @@
-# Python
 __pycache__/
 *.pyc
 venv/
-.venv/
-package/
-*.zip
-
-# Env
 .env
-
-# Node
 node_modules/
 dist/
-
-# OS
+package/
+*.zip
 .DS_Store
